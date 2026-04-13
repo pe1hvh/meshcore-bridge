@@ -16,7 +16,7 @@ Usage:
     python meshcore_bridge.py --debug-on
 
                    Author: PE1HVH
-                  Version: 2.0.0
+                  Version: 2.0.1
   SPDX-License-Identifier: MIT
                 Copyright: (c) 2026 PE1HVH
 """
@@ -40,9 +40,9 @@ except ImportError:
 from meshcore_gui.ble.worker import create_worker
 from meshcore_gui.core.shared_data import SharedData
 
-from meshcore_bridge.config import BridgeConfig, DEFAULT_CONFIG_PATH
+from meshcore_bridge.config import BridgeConfig, DEFAULT_CONFIG_PATH, resolve_bridge_indices
 from meshcore_bridge.bridge_engine import BridgeEngine
-from meshcore_bridge.device_reader import read_device_identity
+from meshcore_bridge.device_reader import read_device_identity, read_device_channels
 from meshcore_bridge.gui.dashboard import BridgeDashboard
 
 
@@ -191,6 +191,18 @@ def main():
 
     # ── Resolve device ports from device_identity.json ──
     port_a, port_b = _resolve_device_ports(cfg)
+
+    # ── Resolve bridge channel indices from channel key maps ──
+    channels_a = read_device_channels(port_a)
+    channels_b = read_device_channels(port_b)
+    ch_map_a = channels_a.channels if channels_a else {}
+    ch_map_b = channels_b.channels if channels_b else {}
+
+    if cfg.bridges:
+        _, indices_changed = resolve_bridge_indices(cfg.bridges, ch_map_a, ch_map_b)
+        if indices_changed:
+            print("Bridge indices corrected — saving updated config.")
+            cfg.to_json(config_path)
 
     # ── Startup banner ──
     print("=" * 58)

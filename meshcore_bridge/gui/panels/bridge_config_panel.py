@@ -10,7 +10,7 @@ Layout mirrors the conventions of FilterPanel (checkbox style) and
 ActionsPanel (button style) from the existing meshcore_gui codebase.
 
                  Author: PE1HVH
-                Version: 1.0.0
+                Version: 1.0.1
 SPDX-License-Identifier: MIT
               Copyright: (c) 2026 PE1HVH
 """
@@ -329,13 +329,29 @@ class BridgeConfigPanel:
             self._bridges[idx].enabled = bool(enabled)
 
     def _on_add_bridge(self) -> None:
-        """Append a new BridgePair from the current form selections."""
-        self._bridges.append(BridgePair(
-            channel_a=self._sel_channel_a,
-            channel_b=self._sel_channel_b,
+        """Append a new BridgePair from the current form selections.
+
+        Stores the channel name as the stable key and sets the runtime
+        index immediately so the engine can forward without a restart.
+        """
+        key_a = ""
+        key_b = ""
+        if self._channels_a and self._sel_channel_a in self._channels_a.channels:
+            key_a = self._channels_a.channels[self._sel_channel_a]
+        if self._channels_b and self._sel_channel_b in self._channels_b.channels:
+            key_b = self._channels_b.channels[self._sel_channel_b]
+
+        pair = BridgePair(
+            channel_a_key=key_a,
+            channel_b_key=key_b,
             direction=self._sel_direction,
             enabled=True,
-        ))
+        )
+        # Populate runtime indices immediately (no restart needed)
+        pair.channel_a = self._sel_channel_a
+        pair.channel_b = self._sel_channel_b
+
+        self._bridges.append(pair)
         self._render_bridge_list()
         self._set_status("Bridge added — click Save to apply.")
 

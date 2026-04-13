@@ -196,14 +196,14 @@ The bridge config directory and file are created automatically on first save via
   },
   "bridges": [
     {
-      "channel_a": 0,
-      "channel_b": 0,
+      "channel_a_key": "Public",
+      "channel_b_key": "Public",
       "direction": "both",
       "enabled": true
     },
     {
-      "channel_a": 25,
-      "channel_b": 25,
+      "channel_a_key": "Bridge",
+      "channel_b_key": "Bridge",
       "direction": "a_to_b",
       "enabled": true
     }
@@ -223,6 +223,17 @@ The bridge config directory and file are created automatically on first save via
 | `"both"` | Forward in both directions (A↔B) |
 | `"a_to_b"` | Forward only from device A to device B |
 | `"b_to_a"` | Forward only from device B to device A |
+
+**Bridge pair fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `channel_a_key` | string | Channel name on device A (stable identifier) |
+| `channel_b_key` | string | Channel name on device B (stable identifier) |
+| `direction` | string | Forwarding direction (see table above) |
+| `enabled` | bool | Whether this bridge is active |
+
+> **Note:** Bridges are stored by channel *name* (key), not by channel index. At startup the bridge resolves each key to the current channel index from the device cache. If a channel has been re-indexed since the last save, the index is corrected automatically and the config is written back to disk.
 
 ### 5.3. Command-Line Options
 

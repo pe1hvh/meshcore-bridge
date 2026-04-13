@@ -8,8 +8,14 @@ parameters. Falls back to sensible defaults when keys are missing.
 Replaces the previous YAML-based configuration entirely; no pyyaml
 dependency is required.
 
+Bridge pairs are stored by channel key (channel name) rather than by
+channel index. On startup, call resolve_bridge_indices() to populate the
+runtime channel_a / channel_b integer fields from the current device
+channel maps. If a key-to-index mapping has drifted, the index is
+corrected automatically and the updated config is written back to disk.
+
                  Author: PE1HVH
-                Version: 2.0.0
+                Version: 2.0.1
 SPDX-License-Identifier: MIT
               Copyright: (c) 2026 PE1HVH
 """
@@ -17,9 +23,10 @@ SPDX-License-Identifier: MIT
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Optional, Tuple
 
 
 DEFAULT_CONFIG_PATH: Path = (
@@ -40,23 +47,38 @@ class DeviceConfig:
 class BridgePair:
     """A single channel bridge between device A and device B.
 
-    Attributes:
-        channel_a:  Channel index on device A.
-        channel_b:  Channel index on device B.
-        direction:  Forwarding direction — 'a_to_b', 'b_to_a', or 'both'.
-        enabled:    Whether this bridge is active.
+    Bridge pairs are stored by channel *key* (channel name) for
+    stability across device reconnects or firmware channel re-indexes.
+
+    Persistent attributes (written to / read from JSON):
+        channel_a_key:  Channel name on device A (stable identifier).
+        channel_b_key:  Channel name on device B (stable identifier).
+        direction:      Forwarding direction — 'a_to_b', 'b_to_a', or 'both'.
+        enabled:        Whether this bridge is active.
+
+    Runtime attributes (not persisted; populated by resolve_bridge_indices()):
+        channel_a:  Current channel index on device A.
+        channel_b:  Current channel index on device B.
     """
 
-    channel_a: int = 0
-    channel_b: int = 0
+    # Persistent — stored in config.json
+    channel_a_key: str = ""
+    channel_b_key: str = ""
     direction: str = "both"   # 'a_to_b' | 'b_to_a' | 'both'
     enabled: bool = True
 
+    # Runtime only — resolved from device channel map at startup
+    channel_a: int = field(default=0, compare=False, repr=False)
+    channel_b: int = field(default=0, compare=False, repr=False)
+
     def to_dict(self) -> dict:
-        """Serialise to a plain dict for JSON persistence."""
+        """Serialise to a plain dict for JSON persistence.
+
+        Only the key-based fields are written; runtime indices are omitted.
+        """
         return {
-            "channel_a": self.channel_a,
-            "channel_b": self.channel_b,
+            "channel_a_key": self.channel_a_key,
+            "channel_b_key": self.channel_b_key,
             "direction": self.direction,
             "enabled": self.enabled,
         }
@@ -66,18 +88,102 @@ class BridgePair:
         """Deserialise from a plain dict.
 
         Args:
-            d: Dict with optional keys channel_a, channel_b,
+            d: Dict with optional keys channel_a_key, channel_b_key,
                direction, enabled.
 
         Returns:
-            Populated BridgePair instance.
+            Populated BridgePair instance (channel_a/channel_b default to 0
+            until resolve_bridge_indices() is called).
         """
         return cls(
-            channel_a=int(d.get("channel_a", 0)),
-            channel_b=int(d.get("channel_b", 0)),
+            channel_a_key=str(d.get("channel_a_key", "")),
+            channel_b_key=str(d.get("channel_b_key", "")),
             direction=str(d.get("direction", "both")),
             enabled=bool(d.get("enabled", True)),
         )
+
+
+def resolve_bridge_indices(
+    bridges: List[BridgePair],
+    channels_a: Dict[int, str],
+    channels_b: Dict[int, str],
+) -> Tuple[List[BridgePair], bool]:
+    """Populate and verify runtime channel indices from channel key maps.
+
+    For each BridgePair, the stored channel_a_key / channel_b_key (channel
+    names) are looked up in the current device channel maps to obtain the
+    runtime channel_a / channel_b integer indices required by BridgeEngine.
+
+    If the index for a key has changed since the config was last written
+    (e.g. after a firmware update or channel re-order), the runtime index is
+    corrected in-place and ``changed`` is returned as True — the caller
+    should then persist the updated config back to disk.
+
+    Keys that are not found in the current channel map are left at index 0
+    and a warning is logged; this can happen when a device is unreachable at
+    startup.
+
+    Args:
+        bridges:    List of BridgePair instances to resolve (mutated in place).
+        channels_a: Index → name map for device A.
+        channels_b: Index → name map for device B.
+
+    Returns:
+        Tuple of (bridges, changed) where changed is True when at least one
+        runtime index was corrected.
+    """
+    log = logging.getLogger(__name__)
+
+    # Build reverse maps: name → index
+    name_to_idx_a: Dict[str, int] = {name: idx for idx, name in channels_a.items()}
+    name_to_idx_b: Dict[str, int] = {name: idx for idx, name in channels_b.items()}
+
+    changed = False
+
+    for bridge in bridges:
+        # ── Side A ──────────────────────────────────────────────────
+        idx_a = name_to_idx_a.get(bridge.channel_a_key)
+        if idx_a is None:
+            log.warning(
+                "Bridge key %r not found in device A channel map; "
+                "keeping runtime index %d",
+                bridge.channel_a_key,
+                bridge.channel_a,
+            )
+        elif idx_a != bridge.channel_a:
+            log.info(
+                "Bridge key %r: device A index corrected %d → %d",
+                bridge.channel_a_key,
+                bridge.channel_a,
+                idx_a,
+            )
+            bridge.channel_a = idx_a
+            changed = True
+        else:
+            bridge.channel_a = idx_a
+
+        # ── Side B ──────────────────────────────────────────────────
+        idx_b = name_to_idx_b.get(bridge.channel_b_key)
+        if idx_b is None:
+            log.warning(
+                "Bridge key %r not found in device B channel map; "
+                "keeping runtime index %d",
+                bridge.channel_b_key,
+                bridge.channel_b,
+            )
+        elif idx_b != bridge.channel_b:
+            log.info(
+                "Bridge key %r: device B index corrected %d → %d",
+                bridge.channel_b_key,
+                bridge.channel_b,
+                idx_b,
+            )
+            bridge.channel_b = idx_b
+            changed = True
+        else:
+            bridge.channel_b = idx_b
+
+    return bridges, changed
 
 
 @dataclass
