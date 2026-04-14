@@ -136,7 +136,7 @@ python meshcore_bridge.py
 # 3. Use the Bridge Configuration panel to add channel bridges and save
 ```
 
-**Prerequisites:** Two meshcore-gui services must be running on this host — one per MeshCore device. See [meshcore-gui](https://github.com/pe1hvh/meshcore-gui) for installation. Both services must have completed at least one successful connection so their cache files exist at `~/.meshcore-gui/cache/`.
+**Prerequisites:** Two meshcore-gui services must be running on this host — one per MeshCore device. See [meshcore-gui](https://github.com/pe1hvh/meshcore-gui) for installation. Both services must have completed at least one successful connection so their cache files exist at `~/.meschcore/cache/`.
 
 ### 4.2. systemd Service
 
@@ -176,7 +176,7 @@ sudo bash install_bridge.sh --uninstall
 |------|---------|
 | `~/.meshcore-gui/bridge/config.json` | Bridge configuration (devices, bridge pairs, runtime settings) |
 | `~/.meshcore-gui/device_identity.json` | Device registry read by meshcore_gui — used to resolve device names |
-| `~/.meshcore-gui/cache/_dev_ttyUSBX.json` | Per-device cache read by meshcore_gui — provides channel names and radio info |
+| `~/.meschcore/cache/_dev_ttyUSBX.json` | Per-device cache read by meshcore_gui — provides channel names and radio info |
 
 The bridge config directory and file are created automatically on first save via the dashboard.
 
@@ -325,7 +325,7 @@ meshcore_bridge/
         └── bridge_config_panel.py          # 3-panel bridge configurator (new)
 
 install_bridge.sh                           # systemd service installer
-BRIDGE.md                                   # This documentation
+README.md                                   # This documentation
 ```
 
 **Changed files in meshcore_gui/:** 0 (zero)
@@ -335,7 +335,7 @@ BRIDGE.md                                   # This documentation
 ## 9. Assumptions
 
 - Both MeshCore devices are connected via USB serial to the same host (Raspberry Pi / Linux server)
-- meshcore_gui has connected to both devices at least once, so `~/.meshcore-gui/cache/_dev_ttyUSBX.json` files exist
+- meshcore_gui has connected to both devices at least once, so `~/.meschcore/cache/_dev_ttyUSBX.json` files exist
 - Each bridged channel has identical channel secret/password on both devices
 - The meshcore_gui package is importable (installed via `pip install -e .` or on PYTHONPATH)
 - Sufficient CPU/RAM for two simultaneous MeshCore connections (~100MB)
@@ -349,7 +349,7 @@ BRIDGE.md                                   # This documentation
 
 - Check that both serial ports exist: `ls -l /dev/ttyUSB*`
 - Verify meshcore_gui is importable: `python -c "from meshcore_gui.core.shared_data import SharedData"`
-- Check that the device cache files exist: `ls ~/.meshcore-gui/cache/`
+- Check that the device cache files exist: `ls ~/.meschcore/cache/`
 
 ### 10.2. Messages Not Forwarding
 
@@ -360,9 +360,9 @@ BRIDGE.md                                   # This documentation
 
 ### 10.3. Channel List Empty in Config Panel
 
-- The channel list is read from `~/.meshcore-gui/cache/_dev_ttyUSBX.json`
+- The channel list is read from `~/.meschcore/cache/_dev_ttyUSBX.json`
 - Run meshcore_gui and connect to both devices at least once to populate these files
-- Check the file exists: `ls ~/.meshcore-gui/cache/`
+- Check the file exists: `ls ~/.meschcore/cache/`
 
 ### 10.4. Port Conflicts
 

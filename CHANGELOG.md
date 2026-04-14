@@ -6,6 +6,24 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.2] — 2026-04-14
+
+### FIXED
+- `config.py`: Removed stale YAML/pyyaml reference from module docstring; the
+  configuration format has been JSON-only since 1.0.0.
+- `__init__.py`: Corrected `__version__` from `1.0.1` to `1.0.2`; updated
+  package description from "a configurable bridge channel" (singular, old
+  single-pair design) to "one or more configurable bridge channels".
+- `bridge_config.yaml`: Replaced with `bridge_config.json` — an example
+  configuration file in the current JSON multi-pair format. The YAML file
+  was a leftover from an earlier design and no longer matched the config
+  schema or file format used by the daemon.
+- `README.md`: Corrected five occurrences of `~/.meshcore-gui/cache/` to
+  `~/.meschcore/cache/` (the actual path used by `device_reader.py`);
+  corrected `BRIDGE.md` reference in the file structure section to `README.md`.
+
+---
+
 ## [1.0.1] — 2026-04-13
 
 ### CHANGED

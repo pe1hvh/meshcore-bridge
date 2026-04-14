@@ -5,8 +5,7 @@ Loads settings from ~/.meshcore-gui/bridge/config.json.
 Provides typed access to device connections, bridge pairs and runtime
 parameters. Falls back to sensible defaults when keys are missing.
 
-Replaces the previous YAML-based configuration entirely; no pyyaml
-dependency is required.
+No external dependencies beyond the Python standard library are required.
 
 Bridge pairs are stored by channel key (channel name) rather than by
 channel index. On startup, call resolve_bridge_indices() to populate the
@@ -15,7 +14,7 @@ channel maps. If a key-to-index mapping has drifted, the index is
 corrected automatically and the updated config is written back to disk.
 
                  Author: PE1HVH
-                Version: 2.0.1
+                Version: 1.0.2
 SPDX-License-Identifier: MIT
               Copyright: (c) 2026 PE1HVH
 """

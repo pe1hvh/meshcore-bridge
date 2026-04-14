@@ -1,0 +1,27 @@
+{
+  "_comment": "MeshCore Bridge — Example configuration. Copy to ~/.meshcore-gui/bridge/config.json and adjust to your setup. See README.md for full documentation.",
+  "device_a": {
+    "port": "/dev/ttyUSB1",
+    "baud": 115200,
+    "label": "869.525 MHz"
+  },
+  "device_b": {
+    "port": "/dev/ttyUSB2",
+    "baud": 115200,
+    "label": "868.000 MHz"
+  },
+  "bridges": [
+    {
+      "_comment": "IMPORTANT: the channel must exist on BOTH devices with an identical channel secret/password. Only the frequency and channel index may differ.",
+      "channel_a_key": "bridge",
+      "channel_b_key": "bridge",
+      "direction": "both",
+      "enabled": true
+    }
+  ],
+  "poll_interval_ms": 200,
+  "forward_prefix": true,
+  "max_forwarded_cache": 500,
+  "gui_port": 9092,
+  "gui_title": "MeshCore Bridge"
+}
