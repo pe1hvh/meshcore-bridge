@@ -16,7 +16,7 @@ Usage:
     python meshcore_bridge.py --debug-on
 
                    Author: PE1HVH
-                  Version: 2.0.1
+                  Version: 2.0.2
   SPDX-License-Identifier: MIT
                 Copyright: (c) 2026 PE1HVH
 """
@@ -42,7 +42,12 @@ from meshcore_gui.core.shared_data import SharedData
 
 from meshcore_bridge.config import BridgeConfig, DEFAULT_CONFIG_PATH, resolve_bridge_indices
 from meshcore_bridge.bridge_engine import BridgeEngine
-from meshcore_bridge.device_reader import read_device_identity, read_device_channels
+from meshcore_bridge.device_reader import (
+    CACHE_DIR,
+    cache_mtime,
+    read_device_identity,
+    read_device_channels,
+)
 from meshcore_bridge.gui.dashboard import BridgeDashboard
 
 
@@ -74,7 +79,7 @@ def _print_usage():
     print("Configuration:")
     print(f"  Device identities : ~/.meshcore-gui/device_identity.json")
     print(f"  Bridge config     : {DEFAULT_CONFIG_PATH}")
-    print(f"  Channel cache     : ~/.meschcore/cache/_dev_ttyUSBX.json")
+    print(f"  Channel cache     : {CACHE_DIR}/_dev_ttyUSBX.json")
     print()
     print("Examples:")
     print("  python meshcore_bridge.py")
@@ -97,16 +102,69 @@ def _parse_flags(argv):
     return flags
 
 
-def _bridge_poll_loop(engine: BridgeEngine, interval_ms: int):
+# Interval for checking the cache files while bridge pairs are unresolved (s)
+_RESOLVE_CHECK_S: float = 5.0
+
+
+def _resolve_bridges(cfg: BridgeConfig, config_path: Path) -> None:
+    """Resolve bridge channel keys to runtime indices from the cache files.
+
+    Mutates the BridgePair instances in ``cfg.bridges`` in place and
+    writes the config back to disk when an index was corrected.
+
+    Args:
+        cfg:         BridgeConfig with device ports and bridge pairs.
+        config_path: Path of the config file to persist corrections to.
+    """
+    if not cfg.bridges:
+        return
+    channels_a = read_device_channels(cfg.device_a.port)
+    channels_b = read_device_channels(cfg.device_b.port)
+    ch_map_a = channels_a.channels if channels_a else {}
+    ch_map_b = channels_b.channels if channels_b else {}
+
+    _, indices_changed = resolve_bridge_indices(cfg.bridges, ch_map_a, ch_map_b)
+    if indices_changed:
+        print("Bridge indices corrected — saving updated config.")
+        cfg.to_json(config_path)
+
+
+def _bridge_poll_loop(
+    engine: BridgeEngine,
+    cfg: BridgeConfig,
+    config_path: Path,
+):
     """Background thread that runs the bridge polling loop.
+
+    While enabled bridge pairs are unresolved (e.g. no cache file existed
+    at startup), the cache files are checked every ``_RESOLVE_CHECK_S``
+    seconds and resolution is retried whenever one of them has changed.
+    The Workers write the cache files on their first successful
+    connection, so pairs become active without a restart.
 
     Args:
         engine:      BridgeEngine instance.
-        interval_ms: Polling interval in milliseconds.
+        cfg:         BridgeConfig (bridge pairs are resolved in place).
+        config_path: Path of the config file.
     """
-    interval_s = interval_ms / 1000.0
+    interval_s = cfg.poll_interval_ms / 1000.0
+    last_check = time.monotonic()
+    last_mtimes = (cache_mtime(cfg.device_a.port), cache_mtime(cfg.device_b.port))
     while True:
         try:
+            now = time.monotonic()
+            pending = [b for b in cfg.bridges if b.enabled and not b.resolved]
+            if pending and now - last_check >= _RESOLVE_CHECK_S:
+                last_check = now
+                mtimes = (cache_mtime(cfg.device_a.port),
+                          cache_mtime(cfg.device_b.port))
+                if mtimes != last_mtimes:
+                    last_mtimes = mtimes
+                    _resolve_bridges(cfg, config_path)
+                    resolved = sum(1 for b in pending if b.resolved)
+                    if resolved:
+                        print(f"Bridge pairs resolved: {resolved}/{len(pending)}")
+                    engine.reload_bridges(cfg.bridges)
             engine.poll_and_forward()
         except Exception as e:
             gui_config.debug_print(f"Bridge poll error: {e}")
@@ -193,16 +251,8 @@ def main():
     port_a, port_b = _resolve_device_ports(cfg)
 
     # ── Resolve bridge channel indices from channel key maps ──
-    channels_a = read_device_channels(port_a)
-    channels_b = read_device_channels(port_b)
-    ch_map_a = channels_a.channels if channels_a else {}
-    ch_map_b = channels_b.channels if channels_b else {}
-
-    if cfg.bridges:
-        _, indices_changed = resolve_bridge_indices(cfg.bridges, ch_map_a, ch_map_b)
-        if indices_changed:
-            print("Bridge indices corrected — saving updated config.")
-            cfg.to_json(config_path)
+    # Unresolved pairs (no cache yet) are retried by the poll loop.
+    _resolve_bridges(cfg, config_path)
 
     # ── Startup banner ──
     print("=" * 58)
@@ -242,7 +292,7 @@ def main():
     print(f"Starting bridge engine (poll every {cfg.poll_interval_ms}ms)...")
     poll_thread = threading.Thread(
         target=_bridge_poll_loop,
-        args=(engine, cfg.poll_interval_ms),
+        args=(engine, cfg, config_path),
         daemon=True,
     )
     poll_thread.start()

@@ -7,11 +7,12 @@
 ![Transport](https://img.shields.io/badge/Transport-Dual%20USB%20Serial-blueviolet.svg)
 ![Bridge](https://img.shields.io/badge/Bridge-Cross--Frequency%20LoRa%20↔%20LoRa-ff6600.svg)
 
-A standalone daemon that connects two MeshCore devices operating on different radio frequencies. It forwards messages on one or more configurable bridge channels from one device to the other, effectively extending your mesh network across frequency boundaries.
+A standalone daemon that connects two MeshCore companion devices operating with different radio settings (frequency, bandwidth, spreading factor). It is deliberately a **simple channel bridge**: it forwards channel messages on one or more configurable bridge channels from one device to the other. The two meshes remain separate networks, connected only through the bridged channels. Direct messages, adverts and routing are **not** bridged — see [1.1. Scope](#11-scope-a-simple-channel-bridge).
 
 ## Table of Contents
 
 - [1. Overview](#1-overview)
+  - [1.1. Scope: A Simple Channel Bridge](#11-scope-a-simple-channel-bridge)
 - [2. Features](#2-features)
 - [3. Requirements](#3-requirements)
   - [3.1. Requirement Status](#31-requirement-status)
@@ -33,8 +34,9 @@ A standalone daemon that connects two MeshCore devices operating on different ra
 - [10. Troubleshooting](#10-troubleshooting)
   - [10.1. Bridge Won't Start](#101-bridge-wont-start)
   - [10.2. Messages Not Forwarding](#102-messages-not-forwarding)
-  - [10.3. Port Conflicts](#103-port-conflicts)
-  - [10.4. Service Issues](#104-service-issues)
+  - [10.3. Channel List Empty in Config Panel](#103-channel-list-empty-in-config-panel)
+  - [10.4. Port Conflicts](#104-port-conflicts)
+  - [10.5. Service Issues](#105-service-issues)
 - [11. License](#11-license)
 - [12. Author](#12-author)
 
@@ -42,37 +44,16 @@ A standalone daemon that connects two MeshCore devices operating on different ra
 
 ## 1. Overview
 
-The bridge runs as an independent process **on the same hardware** as two running [meshcore-gui](https://github.com/pe1hvh/meshcore-gui) service instances. It imports the existing meshcore_gui modules (SharedData, Worker, models, config) as a library and requires **zero modifications** to the meshcore_gui codebase.
+The bridge runs as an independent process that opens both MeshCore devices itself. It imports the existing [meshcore-gui](https://github.com/pe1hvh/meshcore-gui) modules (SharedData, Worker, models, config) as a library and requires **zero modifications** to the meshcore_gui codebase. meshcore-gui must be **installed**, but does **not** need to be running.
 
-> **⚠️ Prerequisite:** The bridge cannot function without two active meshcore-gui services running on the same host — one per MeshCore device. Install and configure meshcore-gui first: [github.com/pe1hvh/meshcore-gui](https://github.com/pe1hvh/meshcore-gui)
+> **⚠️ Do not run meshcore-gui on the same serial ports at the same time.** The bridge creates its own Worker per device and opens both serial ports itself. A meshcore-gui instance on the same port would read from the same serial stream, causing lost frames and command responses. Install meshcore-gui as a package first: [github.com/pe1hvh/meshcore-gui](https://github.com/pe1hvh/meshcore-gui)
 
-```
-┌───────────────────────────────────────────────┐
-│           meshcore_bridge daemon               │
-│                                               │
-│  ┌──────────────┐    ┌──────────────────────┐ │
-│  │ SharedData A │    │    BridgeEngine       │ │
-│  │ + Worker A   │◄──►│  - multi-pair forward │ │
-│  │ (ttyUSB1)    │    │  - direction filter   │ │
-│  └──────────────┘    │  - loop prevention    │ │
-│  ┌──────────────┐    └──────────────────────┘ │
-│  │ SharedData B │◄────────────────────────────┤ │
-│  │ + Worker B   │                             │ │
-│  │ (ttyUSB2)    │                             │ │
-│  └──────────────┘                             │ │
-│                                               │
-│  ┌─────────────────────────────────────────┐  │
-│  │  Bridge Dashboard (NiceGUI :9092)        │  │
-│  │  - Device A & B status                  │  │
-│  │  - Bridge configuration panel (3-panel) │  │
-│  │  - Forwarded message log                │  │
-│  └─────────────────────────────────────────┘  │
-└───────────────────────────────────────────────┘
-```
+![MeshCore Bridge architecture](docs/architecture.svg)
 
 Key properties:
 
-- **Separate process** — the bridge runs alongside the two meshcore-gui services on the same host, as an independent process
+- **Channel-only** — only channel messages on configured bridge pairs are forwarded; DMs, adverts and routing stay within their own mesh
+- **Separate process** — the bridge opens both devices through its own Workers; no running meshcore-gui service is required
 - **Multiple bridge pairs** — any number of channel pairs can be bridged simultaneously, each with its own direction setting
 - **Per-pair direction** — each bridge can be `A→B`, `B→A` or bidirectional `A↔B`
 - **Live reconfiguration** — bridges can be added, removed and saved from the dashboard without restarting the daemon
@@ -80,6 +61,25 @@ Key properties:
 - **Private channels** — encrypted channels work transparently because the bridge operates at the plaintext level
 - **DOMCA dashboard** — status page on its own port with device status, bridge configurator and forwarded message log
 - **JSON configuration** — all settings in `~/.meshcore-gui/bridge/config.json`; device/channel list read automatically from existing meshcore-gui cache files
+
+### 1.1. Scope: A Simple Channel Bridge
+
+MeshCore Bridge is deliberately kept simple. It relays **channel messages** between two companion devices at the application level — nothing more. It does not merge the two meshes into one network; each mesh keeps its own contacts, paths and routing.
+
+| Traffic | Bridged |
+|---------|---------|
+| Channel messages on a configured, enabled bridge pair (public and private channels) | ✅ Yes |
+| Channel messages on channels without a bridge pair | ❌ No |
+| Direct messages (DMs) | ❌ No |
+| Adverts — contacts of one mesh are not visible in the other | ❌ No |
+| Paths, routing and ACKs | ❌ No |
+| Repeater and room server administration (login, status, CLI) | ❌ No |
+
+**Radio settings are independent per side.** Each device is a separate companion with its own radio configuration, so frequency, bandwidth, spreading factor and coding rate may all differ between device A and device B — for example one mesh on 125 kHz and the other on 500 kHz. Keep in mind that the side with the longest airtime per packet determines the effective throughput of the bridge.
+
+**Companion firmware required.** Device A and device B must run MeshCore companion firmware (USB serial). Repeater or room server firmware cannot act as a bridge device. Repeaters can of course operate alongside the bridge at the same site.
+
+**Why DMs are not bridged.** A MeshCore DM is end-to-end encrypted between sender and recipient. The bridge device can only decrypt DMs addressed to itself, so a DM between two users on different meshes cannot be passed on transparently. Relaying DMs through the bridge as a proxy would break end-to-end encryption, make the bridge appear as the sender, return ACKs from the bridge instead of the actual recipient, and require contacts (adverts) of both meshes to be shared. That would couple the two meshes far more tightly than intended. Transparent bridging of DMs and routing requires a packet-level bridge in firmware, which is a different architecture with a different purpose.
 
 ## 2. Features
 
@@ -99,8 +99,8 @@ Key properties:
 - Python 3.10+
 - meshcore_gui (installed or on PYTHONPATH)
 - meshcore Python library (`pip install meshcore`)
-- Two MeshCore devices connected via USB serial
-- meshcore_gui must have been run at least once so the device cache files exist
+- Two MeshCore devices running companion firmware, connected via USB serial
+- No prior meshcore-gui run is needed: the bridge's own Workers write the device cache files on their first successful connection
 
 > **Note:** `pyyaml` is no longer required.
 
@@ -136,7 +136,7 @@ python meshcore_bridge.py
 # 3. Use the Bridge Configuration panel to add channel bridges and save
 ```
 
-**Prerequisites:** Two meshcore-gui services must be running on this host — one per MeshCore device. See [meshcore-gui](https://github.com/pe1hvh/meshcore-gui) for installation. Both services must have completed at least one successful connection so their cache files exist at `~/.meschcore/cache/`.
+**Prerequisites:** meshcore-gui must be installed on this host (see [meshcore-gui](https://github.com/pe1hvh/meshcore-gui)); it does not need to be running. Make sure no meshcore-gui service uses the bridge's serial ports. The device cache files in `~/.meshcore-gui/cache/` are written by the bridge's own Workers on their first successful connection.
 
 ### 4.2. systemd Service
 
@@ -176,7 +176,7 @@ sudo bash install_bridge.sh --uninstall
 |------|---------|
 | `~/.meshcore-gui/bridge/config.json` | Bridge configuration (devices, bridge pairs, runtime settings) |
 | `~/.meshcore-gui/device_identity.json` | Device registry read by meshcore_gui — used to resolve device names |
-| `~/.meschcore/cache/_dev_ttyUSBX.json` | Per-device cache read by meshcore_gui — provides channel names and radio info |
+| `~/.meshcore-gui/cache/_dev_ttyUSBX.json` | Per-device cache written by the meshcore_gui Workers — provides channel names and radio info |
 
 The bridge config directory and file are created automatically on first save via the dashboard.
 
@@ -233,7 +233,7 @@ The bridge config directory and file are created automatically on first save via
 | `direction` | string | Forwarding direction (see table above) |
 | `enabled` | bool | Whether this bridge is active |
 
-> **Note:** Bridges are stored by channel *name* (key), not by channel index. At startup the bridge resolves each key to the current channel index from the device cache. If a channel has been re-indexed since the last save, the index is corrected automatically and the config is written back to disk.
+> **Note:** Bridges are stored by channel *name* (key), not by channel index. At startup the bridge resolves each key to the current channel index from the device cache. If a channel has been re-indexed since the last save, the index is corrected automatically and the config is written back to disk. A bridge pair whose channel key cannot be found is **inactive** (never forwarded) until it is resolved; while pairs are unresolved, resolution is retried automatically whenever a device cache file changes — for example after the first connection of a device.
 
 ### 5.3. Command-Line Options
 
@@ -287,7 +287,7 @@ The bridge works transparently with both public and private channels. Both devic
 - **Inbound**: MeshCore firmware decrypts → Worker receives plaintext → BridgeEngine reads plaintext
 - **Outbound**: BridgeEngine injects command → Worker sends via meshcore lib → Firmware encrypts → LoRa TX
 
-> **Prerequisite:** Each bridged channel MUST be configured on both devices with **identical channel secret/password**. Only the frequency and channel index may differ.
+> **Prerequisite:** Each bridged channel MUST be configured on both devices with **identical channel secret/password**. Only the radio settings (frequency, bandwidth, spreading factor, coding rate) and channel index may differ.
 
 ---
 
@@ -325,6 +325,7 @@ meshcore_bridge/
         └── bridge_config_panel.py          # 3-panel bridge configurator (new)
 
 install_bridge.sh                           # systemd service installer
+docs/architecture.svg                       # Architecture diagram (used in README)
 README.md                                   # This documentation
 ```
 
@@ -334,8 +335,9 @@ README.md                                   # This documentation
 
 ## 9. Assumptions
 
-- Both MeshCore devices are connected via USB serial to the same host (Raspberry Pi / Linux server)
-- meshcore_gui has connected to both devices at least once, so `~/.meschcore/cache/_dev_ttyUSBX.json` files exist
+- Both MeshCore devices run companion firmware and are connected via USB serial to the same host (Raspberry Pi / Linux server)
+- Only channel messages are bridged; DMs, adverts and routing are out of scope (see [1.1. Scope](#11-scope-a-simple-channel-bridge))
+- The device cache files `~/.meshcore-gui/cache/_dev_ttyUSBX.json` are written by the bridge's own Workers on first connection
 - Each bridged channel has identical channel secret/password on both devices
 - The meshcore_gui package is importable (installed via `pip install -e .` or on PYTHONPATH)
 - Sufficient CPU/RAM for two simultaneous MeshCore connections (~100MB)
@@ -349,7 +351,8 @@ README.md                                   # This documentation
 
 - Check that both serial ports exist: `ls -l /dev/ttyUSB*`
 - Verify meshcore_gui is importable: `python -c "from meshcore_gui.core.shared_data import SharedData"`
-- Check that the device cache files exist: `ls ~/.meschcore/cache/`
+- Check that the device cache files exist: `ls ~/.meshcore-gui/cache/`
+- Check that no other process (e.g. a meshcore-gui service) has the serial ports open: `sudo fuser -v /dev/ttyUSB*`
 
 ### 10.2. Messages Not Forwarding
 
@@ -360,9 +363,9 @@ README.md                                   # This documentation
 
 ### 10.3. Channel List Empty in Config Panel
 
-- The channel list is read from `~/.meschcore/cache/_dev_ttyUSBX.json`
-- Run meshcore_gui and connect to both devices at least once to populate these files
-- Check the file exists: `ls ~/.meschcore/cache/`
+- The channel list is read from `~/.meshcore-gui/cache/_dev_ttyUSBX.json`
+- These files are written by the bridge's own Workers on their first successful connection; wait until both devices show "Connected", then reload the dashboard page
+- Check the file exists: `ls ~/.meshcore-gui/cache/`
 
 ### 10.4. Port Conflicts
 

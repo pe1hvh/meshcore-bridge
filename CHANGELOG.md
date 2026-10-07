@@ -6,6 +6,48 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.3] — 2026-10-07
+
+### FIXED
+- `device_reader.py`: Channel cache was read from `~/.meschcore/cache/`, while
+  meshcore_gui writes it to `~/.meshcore-gui/cache/`. `CACHE_DIR` is now
+  imported from `meshcore_gui.services.cache` (single source of truth). With
+  the wrong path every channel map was empty, all bridge pairs ran on
+  channel index 0 and the configuration panel showed no channels.
+- `config.py` / `bridge_engine.py`: A bridge pair whose channel key cannot be
+  resolved no longer falls back to channel index 0. `BridgePair` has a new
+  runtime attribute `resolved`; `BridgeEngine` skips unresolved pairs.
+- `__main__.py`: Bridge indices were resolved only once, before the Workers
+  connected. While pairs are unresolved, the poll loop now checks the device
+  cache files every 5 s and re-resolves when one has changed, so pairs become
+  active after the first connection without a restart.
+- `README.md`: Reverted the 1.0.2 change of the cache path to
+  `~/.meschcore/cache/`; the correct path is `~/.meshcore-gui/cache/`.
+- `README.md`: meshcore-gui only needs to be installed, not running. The bridge
+  opens both serial ports through its own Workers; the prerequisite is replaced
+  by a warning not to run meshcore-gui on the same serial ports.
+- `README.md`: Table of contents for section 10 matched to the section headings.
+- `meshcore_bridge.py`, `__init__.py`: Docstrings no longer describe the bridge
+  as connecting two meshcore_gui instances; stale `bridge_config.yaml` usage
+  example replaced by the JSON config path.
+
+### CHANGED
+- `bridge_config_panel.py`: Pairs added via the GUI are marked resolved when
+  both channel keys are known.
+- `config.py`: Warning for an unknown channel key now states that the bridge
+  pair is inactive until resolved.
+
+### ADDED
+- `device_reader.py`: `cache_mtime(port)` helper.
+- `README.md`: Section 1.1 "Scope: A Simple Channel Bridge" — channel messages
+  only; DMs, adverts and routing are not bridged, with rationale; radio
+  settings (frequency, bandwidth, SF, CR) are independent per side; companion
+  firmware required.
+- `docs/architecture.svg`: Architecture diagram, replacing the ASCII diagram
+  in the README.
+
+---
+
 ## [1.0.2] — 2026-04-14
 
 ### FIXED

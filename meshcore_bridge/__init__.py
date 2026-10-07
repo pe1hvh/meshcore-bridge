@@ -1,9 +1,9 @@
 """
 MeshCore Bridge — Cross-Frequency Message Bridge Daemon.
 
-Standalone daemon that connects two meshcore_gui instances on
-different frequencies by forwarding messages on one or more
-configurable bridge channels.
+Standalone daemon that connects two MeshCore companion devices with
+different radio settings by forwarding channel messages on one or more
+configurable bridge channels (channel messages only).
 """
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"

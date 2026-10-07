@@ -10,7 +10,7 @@ Layout mirrors the conventions of FilterPanel (checkbox style) and
 ActionsPanel (button style) from the existing meshcore_gui codebase.
 
                  Author: PE1HVH
-                Version: 1.0.1
+                Version: 1.0.2
 SPDX-License-Identifier: MIT
               Copyright: (c) 2026 PE1HVH
 """
@@ -350,6 +350,7 @@ class BridgeConfigPanel:
         # Populate runtime indices immediately (no restart needed)
         pair.channel_a = self._sel_channel_a
         pair.channel_b = self._sel_channel_b
+        pair.resolved = bool(key_a and key_b)
 
         self._bridges.append(pair)
         self._render_bridge_list()

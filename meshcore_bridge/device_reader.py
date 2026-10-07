@@ -2,14 +2,16 @@
 Device reader — reads device identity and channel info from meshcore-gui cache files.
 
 Provides typed access to device names and channel lists from:
-  ~/.meshcore-gui/device_identity.json   — device registry
-  ~/.meschcore/cache/_dev_ttyUSBX.json   — per-device channel and radio info
+  ~/.meshcore-gui/device_identity.json      — device registry
+  ~/.meshcore-gui/cache/_dev_ttyUSBX.json   — per-device channel and radio info
 
-Note: The cache directory uses the spelling 'meschcore' (with 'ch') as found
-in the actual application file layout.
+The cache directory is imported from meshcore_gui.services.cache so the
+bridge always reads from the same location the meshcore_gui Workers write
+to. Both files are written by the bridge's own Workers on the first
+successful connection; meshcore-gui does not need to be running.
 
                  Author: PE1HVH
-                Version: 1.0.0
+                Version: 1.0.1
 SPDX-License-Identifier: MIT
               Copyright: (c) 2026 PE1HVH
 """
@@ -19,9 +21,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional
 
+from meshcore_gui.services.cache import CACHE_DIR  # single source of truth
+
 
 IDENTITY_PATH: Path = Path.home() / ".meshcore-gui" / "device_identity.json"
-CACHE_DIR: Path = Path.home() / ".meschcore" / "cache"
 
 
 @dataclass
@@ -53,6 +56,22 @@ def _port_to_cache_filename(port: str) -> str:
         Cache filename string.
     """
     return port.replace("/", "_") + ".json"
+
+
+def cache_mtime(port: str) -> float:
+    """Return the modification time of a device cache file.
+
+    Args:
+        port: Serial port path, e.g. '/dev/ttyUSB1'.
+
+    Returns:
+        Modification time (seconds since epoch), or 0.0 if the file
+        does not exist.
+    """
+    try:
+        return (CACHE_DIR / _port_to_cache_filename(port)).stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 def read_device_identity() -> Dict[str, dict]:

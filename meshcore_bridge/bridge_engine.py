@@ -13,7 +13,7 @@ mechanism in SharedData. BridgeEngine itself is called from a single
 polling thread (started in __main__).
 
                  Author: PE1HVH
-                Version: 2.0.0
+                Version: 2.0.1
 SPDX-License-Identifier: MIT
               Copyright: (c) 2026 PE1HVH
 """
@@ -133,7 +133,8 @@ class BridgeEngine:
         self._last_count_a = len(msgs_a)
         self._last_count_b = len(msgs_b)
 
-        active_bridges = [b for b in self._bridges if b.enabled]
+        # Unresolved pairs are skipped: their runtime index is not valid
+        active_bridges = [b for b in self._bridges if b.enabled and b.resolved]
         count = 0
 
         for bridge in active_bridges:

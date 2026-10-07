@@ -14,7 +14,7 @@ channel maps. If a key-to-index mapping has drifted, the index is
 corrected automatically and the updated config is written back to disk.
 
                  Author: PE1HVH
-                Version: 1.0.2
+                Version: 1.0.3
 SPDX-License-Identifier: MIT
               Copyright: (c) 2026 PE1HVH
 """
@@ -58,6 +58,9 @@ class BridgePair:
     Runtime attributes (not persisted; populated by resolve_bridge_indices()):
         channel_a:  Current channel index on device A.
         channel_b:  Current channel index on device B.
+        resolved:   True when both keys were found in the current device
+                    channel maps. BridgeEngine skips unresolved pairs, so
+                    an unknown key never falls back to channel index 0.
     """
 
     # Persistent — stored in config.json
@@ -69,6 +72,7 @@ class BridgePair:
     # Runtime only — resolved from device channel map at startup
     channel_a: int = field(default=0, compare=False, repr=False)
     channel_b: int = field(default=0, compare=False, repr=False)
+    resolved: bool = field(default=False, compare=False, repr=False)
 
     def to_dict(self) -> dict:
         """Serialise to a plain dict for JSON persistence.
@@ -118,9 +122,10 @@ def resolve_bridge_indices(
     corrected in-place and ``changed`` is returned as True — the caller
     should then persist the updated config back to disk.
 
-    Keys that are not found in the current channel map are left at index 0
-    and a warning is logged; this can happen when a device is unreachable at
-    startup.
+    Keys that are not found in the current channel map leave the pair
+    unresolved (``resolved = False``) and a warning is logged; this can
+    happen when no cache file exists yet at startup. Unresolved pairs are
+    skipped by BridgeEngine and resolution is retried by the poll loop.
 
     Args:
         bridges:    List of BridgePair instances to resolve (mutated in place).
@@ -145,9 +150,8 @@ def resolve_bridge_indices(
         if idx_a is None:
             log.warning(
                 "Bridge key %r not found in device A channel map; "
-                "keeping runtime index %d",
+                "bridge pair inactive until resolved",
                 bridge.channel_a_key,
-                bridge.channel_a,
             )
         elif idx_a != bridge.channel_a:
             log.info(
@@ -166,9 +170,8 @@ def resolve_bridge_indices(
         if idx_b is None:
             log.warning(
                 "Bridge key %r not found in device B channel map; "
-                "keeping runtime index %d",
+                "bridge pair inactive until resolved",
                 bridge.channel_b_key,
-                bridge.channel_b,
             )
         elif idx_b != bridge.channel_b:
             log.info(
@@ -181,6 +184,8 @@ def resolve_bridge_indices(
             changed = True
         else:
             bridge.channel_b = idx_b
+
+        bridge.resolved = idx_a is not None and idx_b is not None
 
     return bridges, changed
 
